@@ -278,6 +278,8 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 .top3 input:focus { box-shadow: 0 0 0 3px rgba(255,191,47,.45); }
 .top3 input::placeholder { color: #c9b98a; }
 .top3-ask { font-weight: 600; color: var(--sun-deep) !important; }
+.top3-ask.dim { color: #9fbcb3 !important; }
+.card .top3-h { margin: 2px 0 -4px; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #4b6a63; }
 .btn-row { display: flex; gap: 10px; width: 100%; margin-top: 4px; }
 .btn {
   flex: 1;
@@ -305,6 +307,9 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
   .biggest { padding: 4px 14px 4px 8px; }
   .biggest img { width: 36px; height: 36px; }
   .top3 li { min-height: 34px; }
+}
+@media (max-height: 600px) {
+  .biggest { display: none; }
   .shake { height: 50px; font-size: 21px; }
   .icon-btn { width: 40px; height: 40px; }
   .next { width: 52px; height: 52px; }
@@ -354,8 +359,9 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
     <h2 id="overTitle">Out of room!</h2>
     <div class="final" id="finalScore">0</div>
     <span class="newbest" id="newBest" hidden>New best!</span>
+    <p class="top3-h" id="top3H">World top 3</p>
     <ol class="top3" id="top3" aria-label="Top 3 scores"></ol>
-    <p class="top3-ask" id="top3Ask" hidden>New high score! Enter your initials</p>
+    <p class="top3-ask" id="top3Ask" hidden>Enter your initials!</p>
     <div class="biggest"><img id="bigImg" alt=""><span>Biggest fruit<b id="bigName">Orange</b></span></div>
     <div class="btn-row"><button class="btn primary" id="againBtn">Play again</button></div>
     <a class="hub-link" href="https://csawyer54.github.io/" hidden>&larr; All games</a>
@@ -1167,11 +1173,63 @@ function recordScore(score) {
   }
   return { top, rank };
 }
-function renderTop({ top, rank }) {
+/* ================= World board (online via Supabase; falls back to this device) ================= */
+const WORLD = {
+  url: 'https://znkmokdzrnpwzfbolats.supabase.co/rest/v1/scores',
+  key: 'sb_publishable_vsubarHmAgdSiih1jmJhxA_RYFriuei',      // public by design: read + add only
+  game: 'fruit-plop',
+};
+let world, worldTok = 0, worldSent = false, local = null, overShown = false;  // world: undefined = loading, null = offline
+async function fetchWorld() {
+  const ctl = window.AbortController ? new AbortController() : null;
+  const timer = ctl && setTimeout(() => ctl.abort(), 5000);
+  try {
+    const r = await fetch(`${WORLD.url}?select=name,score&game=eq.${WORLD.game}&order=score.desc,created_at.asc&limit=3`,
+      { headers: { apikey: WORLD.key }, signal: ctl ? ctl.signal : undefined });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return null;
+    return rows.map(e => ({ n: cleanName(e.name) || '???', s: Number(e.score) })).filter(e => e.s > 0);
+  } catch { return null; } finally { if (timer) clearTimeout(timer); }
+}
+function worldBoard(rows, score) {
+  const b = { top: rows.slice(0, 3), rank: -1 };
+  if (score > 0 && (b.top.length < 3 || score > b.top[b.top.length - 1].s)) {
+    b.rank = b.top.findIndex(e => score > e.s);
+    if (b.rank < 0) b.rank = b.top.length;
+    b.top.splice(b.rank, 0, { n: cleanName(store.get('initials', '')) || '???', s: score });
+    b.top.length = Math.min(b.top.length, 3);
+  }
+  return b;
+}
+// Post the score once: when 3 letters are typed, or when the player leaves the screen.
+function sendWorld() {
+  if (!world || world.rank < 0 || worldSent) return;
+  worldSent = true;
+  const e = world.top[world.rank], v = cleanName(e.n);
+  const name = v.length === 3 ? v : (v + '???').slice(0, 3);
+  try {
+    fetch(WORLD.url, {
+      method: 'POST', keepalive: true,
+      headers: { apikey: WORLD.key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ game: WORLD.game, name, score: e.s }),
+    }).catch(() => {});
+  } catch {}
+  const input = $('initials');
+  if (input) { input.readOnly = true; input.blur(); }
+  const ask = $('top3Ask');
+  ask.textContent = 'Saved to the world board!'; ask.classList.remove('dim'); ask.hidden = false;
+}
+
+function renderTop() {
+  const loading = world === undefined;
+  const b = world || local;                 // offline: this device's board
+  const rank = loading ? -1 : b.rank;
+  $('top3H').textContent = world === null ? 'My top 3' : 'World top 3';
   const ol = $('top3');
   ol.textContent = '';
   for (let i = 0; i < 3; i++) {
-    const e = top[i], li = document.createElement('li');
+    const e = loading ? null : b.top[i], li = document.createElement('li');
     const cell = (cls, text) => { const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; return sp; };
     li.append(cell('rk', i + 1));
     if (!e) { li.className = 'empty'; li.append(cell('nm', '---'), cell('sc', '-')); ol.append(li); continue; }
@@ -1188,10 +1246,10 @@ function renderTop({ top, rank }) {
         const v = cleanName(input.value);
         if (input.value !== v) input.value = v;
         e.n = v || '???';
-        store.set('top', top);
+        if (local && local.rank >= 0) { local.top[local.rank].n = e.n; store.set('top', local.top); }
         if (v) store.set('initials', v);
       };
-      input.addEventListener('input', () => { save(); if (input.value.length === 3) input.blur(); });
+      input.addEventListener('input', () => { save(); if (input.value.length === 3) { input.blur(); sendWorld(); } });
       input.addEventListener('change', save);
       input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } });
       nm.append(input);
@@ -1199,36 +1257,55 @@ function renderTop({ top, rank }) {
     li.append(nm, cell('sc', e.s.toLocaleString()));
     ol.append(li);
   }
-  $('top3Ask').hidden = rank < 0;
+  const ask = $('top3Ask');
+  ask.classList.toggle('dim', loading);
+  ask.textContent = loading ? 'Loading…' : 'Enter your initials!';
+  ask.hidden = !loading && rank < 0;
   return rank;
+}
+function focusOver(rank) {
+  const fine = window.matchMedia && matchMedia('(pointer: fine)').matches;
+  if (rank >= 0 && fine) { $('initials').focus(); $('initials').select(); }
+  else if (document.activeElement === document.body) $('againBtn').focus();
 }
 
 function gameOver() {
   S.over = true; S.overT = 0;
   dragging = false;
   sfx.over(); buzz([60, 60, 120]);
-  const board = recordScore(S.score);
+  local = recordScore(S.score);
   if (S.score >= best) { best = S.score; store.set('best', best); }
+  // start loading the world board now; the card appears ~1 s later
+  const tok = ++worldTok, score = S.score;
+  world = undefined; worldSent = false; overShown = false;
+  fetchWorld().then(rows => {
+    if (tok !== worldTok) return;
+    world = rows ? worldBoard(rows, score) : null;
+    if (S.over && overShown) focusOver(renderTop());
+  });
   setTimeout(() => {
     if (!S.over) return;
     $('finalScore').textContent = S.score.toLocaleString();
     const isBest = S.score > 0 && S.score >= best;
     $('newBest').hidden = !isBest;
-    const rank = renderTop(board);
     $('bigImg').src = ICONS[S.maxT];
     $('bigName').textContent = FRUITS[S.maxT].name;
+    overShown = true;
+    const rank = renderTop();
     overPanel.hidden = false;
-    const fine = window.matchMedia && matchMedia('(pointer: fine)').matches;
-    if (rank >= 0 && fine) { $('initials').focus(); $('initials').select(); }
-    else $('againBtn').focus();
+    focusOver(rank);
   }, 900);
 }
 
 function newGame() {
+  sendWorld();
   S = fresh();
   overPanel.hidden = true;
   updateNext(); updateEvo(); updateShakeBtn();
 }
+for (const a of document.querySelectorAll('#overPanel .hub-link')) a.addEventListener('click', sendWorld);
+document.addEventListener('visibilitychange', () => { if (document.hidden) sendWorld(); });
+addEventListener('pagehide', sendWorld);
 
 /* ================= Rendering ================= */
 function resize() {
