@@ -203,7 +203,10 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 .overlay {
   position: fixed; inset: 0;
   z-index: 20;
-  display: grid; place-items: center;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  padding-block: 12px;
+  box-sizing: border-box;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: rgba(29,74,67,.38);
@@ -212,6 +215,8 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
   animation: fade .3s ease-out;
 }
 .card {
+  margin: auto;
+  flex: none;
   width: min(320px, 100%);
   box-sizing: border-box;
   padding: 24px 22px 22px;
@@ -295,6 +300,11 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 @keyframes fade { from { opacity: 0; } }
 
 @media (max-height: 640px) {
+  .card { padding: 18px 18px 16px; gap: 8px; }
+  .final { font-size: 44px; }
+  .biggest { padding: 4px 14px 4px 8px; }
+  .biggest img { width: 36px; height: 36px; }
+  .top3 li { min-height: 34px; }
   .shake { height: 50px; font-size: 21px; }
   .icon-btn { width: 40px; height: 40px; }
   .next { width: 52px; height: 52px; }
