@@ -39,6 +39,8 @@ body {
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
+/* stop iOS double-tap zoom on fast taps; the jar canvas overrides this with none */
+*, *::before, *::after { touch-action: manipulation; }
 button { font-family: inherit; touch-action: manipulation; cursor: pointer; }
 button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 
@@ -243,6 +245,34 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 }
 .biggest img { width: 46px; height: 46px; }
 .biggest b { display: block; font-size: 18px; color: var(--ink); font-weight: 600; }
+.top3 { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 6px; }
+.top3 li {
+  display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 8px;
+  min-height: 38px; box-sizing: border-box;
+  padding: 4px 14px;
+  border-radius: 14px;
+  background: #e5f4ea;
+  font-size: 17px; font-weight: 600; color: var(--ink);
+  text-align: left;
+}
+.top3 .rk { color: #4b6a63; font-weight: 700; }
+.top3 .nm { letter-spacing: .14em; }
+.top3 .sc { font-variant-numeric: tabular-nums; }
+.top3 li.me { background: #ffe9a8; box-shadow: inset 0 0 0 3px var(--sun); }
+.top3 li.empty { color: #9fbcb3; }
+.top3 input {
+  width: 4.4em; height: 32px; box-sizing: border-box;
+  padding: 0 6px;
+  border: 2px solid var(--sun-hot); border-radius: 10px;
+  background: #fff; color: var(--ink);
+  font: 700 18px var(--font-display); letter-spacing: .14em;
+  text-transform: uppercase; text-align: center;
+  -webkit-user-select: text; user-select: text;
+  outline: none;
+}
+.top3 input:focus { box-shadow: 0 0 0 3px rgba(255,191,47,.45); }
+.top3 input::placeholder { color: #c9b98a; }
+.top3-ask { font-weight: 600; color: var(--sun-deep) !important; }
 .btn-row { display: flex; gap: 10px; width: 100%; margin-top: 4px; }
 .btn {
   flex: 1;
@@ -314,7 +344,8 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
     <h2 id="overTitle">Out of room!</h2>
     <div class="final" id="finalScore">0</div>
     <span class="newbest" id="newBest" hidden>New best!</span>
-    <p id="bestLine">Best 0</p>
+    <ol class="top3" id="top3" aria-label="Top 3 scores"></ol>
+    <p class="top3-ask" id="top3Ask" hidden>New high score! Enter your initials</p>
     <div class="biggest"><img id="bigImg" alt=""><span>Biggest fruit<b id="bigName">Orange</b></span></div>
     <div class="btn-row"><button class="btn primary" id="againBtn">Play again</button></div>
     <a class="hub-link" href="https://csawyer54.github.io/" hidden>&larr; All games</a>
@@ -334,6 +365,14 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 </div>
 
 <script>
+// iOS Safari zooms on two quick taps. Cancel the second tap's default action unless it
+// landed on a control (those already opt out via touch-action and need their click).
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const t = e.target, now = e.timeStamp;
+  if (now - lastTouchEnd < 400 && !(t.closest && t.closest('button, a, input, label'))) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
 // Link back to the game center, only on the GitHub Pages copy
 if (/(^|\.)github\.io$/.test(location.hostname)) for (const a of document.querySelectorAll('.hub-link')) a.hidden = false;
 (() => {
@@ -1097,21 +1136,81 @@ function updateShakeBtn() {
   }
 }
 
+/* ================= Top-3 board (saved on this device) ================= */
+const cleanName = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+function loadTop() {
+  let b = store.get('top', null);
+  if (!Array.isArray(b)) b = best > 0 ? [{ n: '???', s: best }] : [];   // first run: keep the old best
+  return b.filter(e => e && Number.isFinite(e.s))
+    .map(e => ({ n: cleanName(e.n) || '???', s: e.s }))
+    .sort((a, b) => b.s - a.s).slice(0, 3);
+}
+function recordScore(score) {
+  const top = loadTop();
+  let rank = -1;
+  if (score > 0 && (top.length < 3 || score > top[2].s)) {
+    rank = top.findIndex(e => score > e.s);
+    if (rank < 0) rank = top.length;
+    top.splice(rank, 0, { n: cleanName(store.get('initials', '')) || '???', s: score });
+    top.length = Math.min(top.length, 3);
+    store.set('top', top);
+  }
+  return { top, rank };
+}
+function renderTop({ top, rank }) {
+  const ol = $('top3');
+  ol.textContent = '';
+  for (let i = 0; i < 3; i++) {
+    const e = top[i], li = document.createElement('li');
+    const cell = (cls, text) => { const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; return sp; };
+    li.append(cell('rk', i + 1));
+    if (!e) { li.className = 'empty'; li.append(cell('nm', '---'), cell('sc', '-')); ol.append(li); continue; }
+    const nm = cell('nm', i === rank ? '' : e.n);
+    if (i === rank) {
+      li.className = 'me';
+      const input = document.createElement('input');
+      Object.assign(input, { id: 'initials', maxLength: 3, value: e.n === '???' ? '' : e.n, placeholder: '???', autocomplete: 'off', spellcheck: false });
+      input.setAttribute('autocapitalize', 'characters');
+      input.setAttribute('autocorrect', 'off');
+      input.setAttribute('enterkeyhint', 'done');
+      input.setAttribute('aria-label', 'Your initials');
+      const save = () => {
+        const v = cleanName(input.value);
+        if (input.value !== v) input.value = v;
+        e.n = v || '???';
+        store.set('top', top);
+        if (v) store.set('initials', v);
+      };
+      input.addEventListener('input', () => { save(); if (input.value.length === 3) input.blur(); });
+      input.addEventListener('change', save);
+      input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } });
+      nm.append(input);
+    }
+    li.append(nm, cell('sc', e.s.toLocaleString()));
+    ol.append(li);
+  }
+  $('top3Ask').hidden = rank < 0;
+  return rank;
+}
+
 function gameOver() {
   S.over = true; S.overT = 0;
   dragging = false;
   sfx.over(); buzz([60, 60, 120]);
+  const board = recordScore(S.score);
   if (S.score >= best) { best = S.score; store.set('best', best); }
   setTimeout(() => {
     if (!S.over) return;
     $('finalScore').textContent = S.score.toLocaleString();
     const isBest = S.score > 0 && S.score >= best;
     $('newBest').hidden = !isBest;
-    $('bestLine').textContent = 'Best ' + best.toLocaleString();
+    const rank = renderTop(board);
     $('bigImg').src = ICONS[S.maxT];
     $('bigName').textContent = FRUITS[S.maxT].name;
     overPanel.hidden = false;
-    $('againBtn').focus();
+    const fine = window.matchMedia && matchMedia('(pointer: fine)').matches;
+    if (rank >= 0 && fine) { $('initials').focus(); $('initials').select(); }
+    else $('againBtn').focus();
   }, 900);
 }
 
