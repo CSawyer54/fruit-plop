@@ -1,5 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Fruit Plop</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fruit Plop</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -255,6 +254,8 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
 .btn.primary { background: linear-gradient(var(--sun), var(--sun-hot)); color: #fff; box-shadow: 0 5px 0 var(--sun-deep); text-shadow: 0 2px 0 rgba(160,70,0,.35); }
 .btn.quiet { background: #e5f4ea; color: var(--teal); box-shadow: 0 5px 0 #b9dcc8; }
 .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--teal-deep); }
+.hub-link { margin-top: 4px; padding: 6px 10px; font-size: 15px; font-weight: 600; color: var(--teal); text-decoration: none; }
+.hub-link:hover, .hub-link:focus-visible { text-decoration: underline; }
 
 @keyframes pop { from { transform: scale(.4); } to { transform: scale(1); } }
 @keyframes bump { 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
@@ -316,6 +317,7 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
     <p id="bestLine">Best 0</p>
     <div class="biggest"><img id="bigImg" alt=""><span>Biggest fruit<b id="bigName">Orange</b></span></div>
     <div class="btn-row"><button class="btn primary" id="againBtn">Play again</button></div>
+    <a class="hub-link" href="https://csawyerprof.github.io/" hidden>&larr; All games</a>
   </div>
 </div>
 
@@ -327,10 +329,13 @@ button:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
       <button class="btn quiet" id="keepBtn">Keep playing</button>
       <button class="btn primary" id="newBtn">New game</button>
     </div>
+    <a class="hub-link" href="https://csawyerprof.github.io/" hidden>&larr; All games</a>
   </div>
 </div>
 
 <script>
+// Link back to the game center, only on the GitHub Pages copy
+if (/(^|\.)github\.io$/.test(location.hostname)) for (const a of document.querySelectorAll('.hub-link')) a.hidden = false;
 (() => {
 'use strict';
 
